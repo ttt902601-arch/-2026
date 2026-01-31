@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2026 釜山打老虎</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500&family=Quicksand:wght@300;400;500&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Quicksand', 'Noto Sans TC', sans-serif; background-color: #F4F7F9; -webkit-user-select: none; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .card-shadow { box-shadow: 0 10px 25px rgba(160, 180, 200, 0.15); }
+        .active-date { background: #B6D7F3; color: white !important; transform: scale(1.05); }
+        .category-tag { font-size: 10px; padding: 2px 8px; border-radius: 99px; }
+        /* 彈窗動畫 */
+        .modal-enter-active, .modal-leave-active { transition: opacity 0.3s ease; }
+        .modal-enter-from, .modal-leave-to { opacity: 0; }
+        /* 地址放大顯示 */
+        .address-overlay { background: rgba(0,0,0,0.8); backdrop-filter: blur(4px); }
+    </style>
+</head>
+<body class="text-slate-600">
+    <div id="app" class="max-w-md mx-auto min-h-screen relative pb-20">
+        
+        <header class="sticky top-0 z-50 bg-[#F4F7F9]/80 backdrop-blur-md p-6 flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <button @click="showInfoStation = true" class="w-10 h-10 rounded-full bg-white shadow-sm flex items-center justify-center text-blue-400 border border-blue-50">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                </button>
+                <div>
+                    <h1 class="text-[10px] tracking-widest text-blue-400 uppercase font-bold">Busan 2026</h1>
+                    <h2 class="text-xl font-medium text-slate-800">2026 釜山打老虎</h2>
+                </div>
+            </div>
+            <div class="text-right">
+                <span class="text-xs bg-blue-100/50 text-blue-500 px-3 py-1 rounded-full">釜山 12°C</span>
+            </div>
+        </header>
+
+        <div class="flex overflow-x-auto no-scrollbar px-6 space-x-4 mb-6 py-2">
+            <div v-for="day in dates" :key="day.date" 
+                 @click="selectedDate = day.date"
+                 :class="['flex-shrink-0 w-16 h-20 rounded-3xl flex flex-col items-center justify-center cursor-pointer bg-white transition-all', 
+                          selectedDate === day.date ? 'active-date shadow-lg shadow-blue-200' : 'text-slate-400 shadow-sm']">
+                <span class="text-[10px] uppercase">{{ day.weekday }}</span>
+                <span class="text-lg font-bold">{{ day.dayNum }}</span>
+            </div>
+        </div>
+
+        <div class="px-6 mb-4">
+            <div class="bg-blue-50/50 rounded-2xl p-3 text-center border border-blue-100">
+                <p class="text-[10px] text-blue-400 font-bold uppercase tracking-widest">
+                    當前建議區域：{{ currentZone }}
+                </p>
+            </div>
+        </div>
+
+        <main class="px-6">
+            <div ref="itineraryList" class="space-y-4">
+                <div v-for="(item, index) in currentDayItems" :key="item.id" class="bg-white rounded-[28px] p-5 card-shadow relative overflow-hidden group">
+                    <div :class="['absolute left-0 top-0 bottom-0 w-1.5', getCategoryColor(item.category)]"></div>
+                    <div class="flex justify-between items-start mb-1">
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs font-bold text-blue-300">{{ item.time }}</span>
+                            <span :class="['category-tag text-white', getCategoryColor(item.category)]">{{ item.category }}</span>
+                        </div>
+                        <button @click="removeItem(index)" class="text-slate-300 hover:text-red-400">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                        </button>
+                    </div>
+                    
+                    <h4 @touchstart="handleLongPressStart(item)" @touchend="handleLongPressEnd" class="text-base font-medium text-slate-700 active:text-blue-500">
+                        {{ item.location }}
+                    </h4>
+                    <p class="text-[11px] text-blue-400/80 font-medium mt-1">{{ item.description }}</p>
+                    <p v-if="item.note" class="text-xs text-slate-400 mt-2 italic leading-relaxed">{{ item.note }}</p>
+
+                    <div class="mt-4 pt-4 border-t border-slate-50 flex justify-between items-center">
+                        <span class="text-[10px] text-slate-300 italic">長按名稱可複製地址</span>
+                        <button @click="openNaverMap(item.location)" class="text-xs text-blue-400 flex items-center gap-1 font-bold">📍 NAVER 導航</button>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <button @click="showAddModal = true" class="fixed bottom-6 right-6 w-14 h-14 bg-slate-800 text-white rounded-full shadow-2xl flex items-center justify-center text-2xl z-40">
+            +
+        </button>
+
+        <div v-if="showAddModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex items-end">
+            <div class="bg-white w-full rounded-t-[40px] p-8 max-w-md mx-auto animate-slide-up max-h-[85vh] overflow-y-auto">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-xl font-bold">新增行程</h2>
+                    <button @click="showAddModal = false" class="text-slate-400">關閉</button>
+                </div>
+
+                <h3 class="text-xs font-bold text-slate-400 mb-3 tracking-widest italic">附近的推薦景點/餐廳</h3>
+                <div class="flex flex-wrap gap-2 mb-8">
+                    <button v-for="spot in filteredDocItems" :key="spot.name" 
+                            @click="selectFromDoc(spot)"
+                            class="bg-blue-50 text-blue-500 px-4 py-2 rounded-xl text-xs border border-blue-100 hover:bg-blue-400 hover:text-white transition">
+                        + {{ spot.name }}
+                    </button>
+                </div>
+
+                <div class="space-y-4 pt-4 border-t border-slate-100">
+                    <div class="flex gap-2">
+                        <input v-model="newItem.time" type="time" class="flex-1 p-4 bg-slate-50 rounded-2xl outline-none text-sm">
+                        <select v-model="newItem.category" class="flex-1 p-4 bg-slate-50 rounded-2xl outline-none text-sm">
+                            <option v-for="cat in ['景點', '美食', '交通', '購物', '其他']" :key="cat" :value="cat">{{ cat }}</option>
+                        </select>
+                    </div>
+                    <input v-model="newItem.location" placeholder="地點名稱" class="w-full p-4 bg-slate-50 rounded-2xl outline-none text-sm">
+                    <button @click="addItem" class="w-full bg-blue-400 text-white py-4 rounded-2xl font-bold">確認加入行程</button>
+                </div>
+            </div>
+        </div>
+
+        <div v-if="longPressActive" class="fixed inset-0 z-[200] address-overlay flex items-center justify-center p-10 animate-fade-in">
+            <div class="bg-white rounded-[40px] p-8 text-center w-full shadow-2xl">
+                <div class="w-12 h-12 bg-green-100 text-green-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+                </div>
+                <h3 class="text-slate-400 text-xs font-bold uppercase mb-2">地址已自動複製</h3>
+                <p class="text-xl font-bold text-slate-800 break-words leading-relaxed">{{ activeAddress }}</p>
+                <button @click="longPressActive = false" class="mt-8 text-blue-400 font-bold">點擊關閉</button>
+            </div>
+        </div>
+
+        <div v-if="showInfoStation" class="fixed inset-0 bg-white z-[100] overflow-y-auto p-8 animate-slide-up">
+            <div class="flex justify-between items-center mb-10">
+                <h2 class="text-2xl font-bold">資訊站</h2>
+                <button @click="showInfoStation = false" class="text-slate-400">關閉</button>
+            </div>
+            <div class="space-y-8">
+                <section v-for="(info, category) in infoStationData" :key="category">
+                    <h3 class="text-xs font-bold text-blue-400 uppercase tracking-widest mb-4">{{ category }}</h3>
+                    <div class="grid grid-cols-1 gap-3">
+                        <div v-for="(item, idx) in info" :key="idx" class="p-4 bg-slate-50 rounded-2xl text-sm flex justify-between items-center">
+                            <span>{{ item }}</span>
+                            <button @click="removeInfo(category, idx)" class="text-slate-300 text-xs">移除</button>
+                        </div>
+                        <button @click="promptAddInfo(category)" class="py-3 border border-dashed border-slate-200 rounded-2xl text-xs text-slate-400">+ 新增</button>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, computed, onMounted, watch, nextTick } = Vue;
+
+        createApp({
+            setup() {
+                const selectedDate = ref('2026-03-16');
+                const showAddModal = ref(false);
+                const showInfoStation = ref(false);
+                const longPressActive = ref(false);
+                const activeAddress = ref('');
+                const pressTimer = ref(null);
+
+                // 根據住宿點定義區域 (3/16-18 海雲台, 3/19-21 西面)
+                const currentZone = computed(() => {
+                    const day = selectedDate.value.split('-')[2];
+                    return (day <= '18') ? '海雲台/東側' : '西面/市區';
+                });
+
+                // 來自附件 docx 的內容整理
+                const docItems = [
+                    { name: '海雲台藍線公園', zone: '海雲台/東側', addr: '부산 해운대구 달맞이길 62번길 11', desc: '絕美海岸膠囊小火車，釜山必去。', cat: '景點' },
+                    { name: '嚴勇帛豬肉湯飯', zone: '海雲台/東側', addr: '부산 해운대구 구남로24번길 39', desc: '清淡鮮甜的高級感豬肉湯飯。', cat: '美食' },
+                    { name: '大海鮑魚粥', zone: '海雲台/東側', addr: '부산 해운대구 달맞이길62번길 7', desc: '濃郁鮑魚內臟熬煮，早餐首選。', cat: '美食' },
+                    { name: '水邊最高豬肉湯飯', zone: '海雲台/東側', addr: '부산 해운대구 구남로 39', desc: '在地人排隊名店，湯頭濃郁。', cat: '美食' },
+                    { name: '哈利丹路咖啡', zone: '海雲台/東側', addr: '부산 해운대구 우동1로 20번길 27-13', desc: '充滿文青氣息的個性咖啡街。', cat: '美食' },
+                    { name: '西面手工辣炒雞', zone: '西面/市區', addr: '부산 부산진구 중앙대로692번길 46', desc: '濃厚起司與香辣雞肉完美融合。', cat: '美食' },
+                    { name: '螞蟻家辣炒章魚', zone: '西面/市區', addr: '부산 부산진구 신천대로62번길 73', desc: '經典釜山辣味，章魚肥美 Q 彈。', cat: '美食' },
+                    { name: '味贊王鹽烤肉', zone: '西面/市區', addr: '부산 부산진구 중앙대로691번가길 24-3', desc: '厚切五花肉配特製鹽，極致美味。', cat: '美食' },
+                    { name: '明星一隻雞', zone: '西面/市區', addr: '부산 영도구 절營路 22', desc: '暖心雞湯料理，搭配特製沾醬。', cat: '美食' },
+                    { name: '西面蘇蘇中華料理', zone: '西面/市區', addr: '부산 부산진구 중앙대로680번가길 5', desc: '精緻韓式炸醬麵與糖醋肉。', cat: '美食' }
+                ];
+
+                const filteredDocItems = computed(() => {
+                    return docItems.filter(item => item.zone === currentZone.value);
+                });
+
+                const dates = [
+                    { date: '2026-03-16', dayNum: '16', weekday: 'Mon' },
+                    { date: '2026-03-17', dayNum: '17', weekday: 'Tue' },
+                    { date: '2026-03-18', dayNum: '18', weekday: 'Wed' },
+                    { date: '2026-03-19', dayNum: '19', weekday: 'Thu' },
+                    { date: '2026-03-20', dayNum: '20', weekday: 'Fri' },
+                    { date: '2026-03-21', dayNum: '21', weekday: 'Sat' },
+                ];
+
+                const itinerary = ref(JSON.parse(localStorage.getItem('busan_v3_data')) || {
+                    '2026-03-16': [{ id: 1, time: '14:35', location: '金海機場', category: '交通', description: '釜山門戶，記得領取網卡。', note: '抵達！', addr: '부산 강서구 공항진입로 108' }]
+                });
+
+                const infoStationData = ref(JSON.parse(localStorage.getItem('busan_v3_info')) || {
+                    '備用景點': ['釜山 X the SKY', '青沙浦雙胞胎燈塔'],
+                    '緊急醫療': ['釜山大學醫院 (051-240-7000)'],
+                });
+
+                const newItem = ref({ time: '10:00', location: '', note: '', category: '景點', description: '', addr: '' });
+
+                const currentDayItems = computed(() => itinerary.value[selectedDate.value] || []);
+
+                // 選擇建議景點
+                const selectFromDoc = (spot) => {
+                    newItem.value.location = spot.name;
+                    newItem.value.description = spot.desc;
+                    newItem.value.category = spot.cat;
+                    newItem.value.addr = spot.addr;
+                };
+
+                const addItem = () => {
+                    if (!newItem.value.location) return alert('請輸入或點選地點');
+                    if (!itinerary.value[selectedDate.value]) itinerary.value[selectedDate.value] = [];
+                    itinerary.value[selectedDate.value].push({ ...newItem.value, id: Date.now() });
+                    saveAll();
+                    showAddModal.value = false;
+                    resetNewItem();
+                };
+
+                const resetNewItem = () => {
+                    newItem.value = { time: '10:00', location: '', note: '', category: '景點', description: '', addr: '' };
+                };
+
+                // 長按邏輯
+                const handleLongPressStart = (item) => {
+                    pressTimer.value = setTimeout(() => {
+                        activeAddress.value = item.addr || "暫無詳細地址資訊";
+                        longPressActive.ref = true;
+                        // 自動複製地址
+                        if (item.addr) {
+                            navigator.clipboard.writeText(item.addr);
+                            longPressActive.value = true;
+                        }
+                    }, 800);
+                };
+
+                const handleLongPressEnd = () => {
+                    clearTimeout(pressTimer.value);
+                };
+
+                const removeItem = (idx) => {
+                    itinerary.value[selectedDate.value].splice(idx, 1);
+                    saveAll();
+                };
+
+                const getCategoryColor = (cat) => {
+                    const colors = { '景點': 'bg-blue-300', '美食': 'bg-orange-300', '交通': 'bg-slate-400', '購物': 'bg-pink-300', '其他': 'bg-emerald-300' };
+                    return colors[cat] || 'bg-blue-200';
+                };
+
+                const saveAll = () => {
+                    localStorage.setItem('busan_v3_data', JSON.stringify(itinerary.value));
+                    localStorage.setItem('busan_v3_info', JSON.stringify(infoStationData.value));
+                };
+
+                const openNaverMap = (loc) => {
+                    window.location.href = `nmap://search?query=${encodeURIComponent(loc)}&appname=com.busan.tiger`;
+                };
+
+                return {
+                    selectedDate, dates, itinerary, currentDayItems, currentZone,
+                    showAddModal, showInfoStation, newItem, infoStationData,
+                    addItem, removeItem, getCategoryColor, openNaverMap, 
+                    filteredDocItems, selectFromDoc,
+                    handleLongPressStart, handleLongPressEnd, longPressActive, activeAddress
+                };
+            }
+        }).mount('#app');
+    </script>
+
+    <style>
+        @keyframes slide-up { from { transform: translateY(30px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        .animate-slide-up { animation: slide-up 0.4s ease-out; }
+        @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+        .animate-fade-in { animation: fade-in 0.2s ease-out; }
+    </style>
+</body>
+</html>
